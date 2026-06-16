@@ -159,10 +159,9 @@
   .msg.user{align-self:flex-end;background:var(--char2);color:var(--cream);border-radius:12px 12px 3px 12px}
   .msg.bot{align-self:flex-start;background:var(--sand);color:var(--char);border-radius:12px 12px 12px 3px;border:1px solid var(--line)}
   .msg.bot .bot-name{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--amber);margin-bottom:4px}
-  .msg.typing span{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--soft);animation:bounce-dot .9s infinite;margin:0 2px}
-  .msg.typing span:nth-child(2){animation-delay:.2s}
-  .msg.typing span:nth-child(3){animation-delay:.4s}
-  @keyframes bounce-dot{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+  .msg.typing span{display:none}
+  .msg.typing::after{content:"⚽";font-size:20px;display:inline-block;animation:ball-bounce .7s ease-in-out infinite}
+  @keyframes ball-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
   .chat-bar{display:flex;gap:8px;background:#fff;border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;padding:10px}
   .chat-bar input{flex:1;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:14px;font-family:var(--sans)}
   .chat-bar input:focus{outline:2px solid var(--amber)}
@@ -801,11 +800,9 @@ function renderPredict(){
   h+=fh;
   if(MYNATION)h+=`<div class="natban">🎲 Drawn nation: <b>${flag(MYNATION)} ${esc(MYNATION)}</b></div>`;
   else h+=`<div class="natban" style="border-left-color:var(--amber)">Make your first pick to be drawn a random nation. <b>Pula!</b></div>`;
-  if(MYTEAM)h+=`<div class="natban" style="border-left-color:var(--gold)">💛 Supporting: <b>${flag(MYTEAM)} ${esc(MYTEAM)}</b> &nbsp;<button class="btn sm" style="font-size:11px;padding:3px 8px" onclick="pickTeam()">Change</button></div>`;
-  else h+=`<div class="natban" style="border-left-color:var(--rust);background:#fff5f0"><b>Pick your team first!</b> Who are you supporting in the 2026 World Cup? <button class="btn rust sm" onclick="pickTeam()">Pick my team</button></div>`;
+
   }
-  // Top 10 supported teams (loaded async, placeholder for now)
-  h+='<div id="teamChart" style="margin:18px 0"></div>';
+
   h+='<div id="scorersChart" style="margin:18px 0"></div>';
   if(open.length){
     const showing=open.slice(0,PREDICT_PAGE);
@@ -816,23 +813,7 @@ function renderPredict(){
   }
   else h+='<div class="empty">No upcoming fixtures to predict. Check back soon!</div>';
   el.innerHTML=h;
-  // Load top teams chart async
-  get("team_support").then(allTeams=>{
-    if(!allTeams)return;
-    const sorted=Object.entries(allTeams).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    if(!sorted.length)return;
-    const max=sorted[0][1]||1;
-    const chartEl=document.getElementById("teamChart");
-    if(!chartEl)return;
-    chartEl.innerHTML='<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--soft);margin-bottom:10px">🏆 Top Supported Teams</div>'
-      +sorted.map(([team,cnt])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
-        <div style="width:60px;font-size:13px;font-weight:700;text-align:right">${flag(team)}</div>
-        <div style="flex:1;background:#f0ece4;border-radius:6px;overflow:hidden;height:22px">
-          <div style="height:100%;background:linear-gradient(90deg,var(--rust),var(--amber));width:${Math.round(cnt/max*100)}%;display:flex;align-items:center;padding-left:8px;font-size:12px;font-weight:700;color:#fff;min-width:30px">${cnt}</div>
-        </div>
-        <div style="width:80px;font-size:12px;font-weight:600;color:var(--char)">${esc(team)}</div>
-      </div>`).join('');
-  });
+
   // Load top scorers — try API then fall back to admin-entered cache
   (async function(){
     const el2=document.getElementById("scorersChart");
@@ -911,15 +892,30 @@ async function setTeam(team){
 async function savePred(id){
   const a=parseInt($("pa_"+id).value),b=parseInt($("pb_"+id).value);
   if(isNaN(a)||isNaN(b)){toast("Enter both scores");return;}
-  if(!MYTEAM){toast("Pick your team first before predicting!");pickTeam();return;}
   if(MYPRED[id]){toast("You've already locked in this pick ◆");return;}
   if(!ME||ME.trim().split(/\s+/).length<2){
-    // Show name prompt, then retry
-    const name=prompt("Please enter your full name (first and last) to submit a prediction:");
-    if(!name||name.trim().split(/\s+/).length<2){toast("Full name required — first and last name");return;}
-    $("playerName").value=name.trim();
-    ME=name.trim();
-    await loadMine();
+    // Show inline name modal
+    await new Promise(resolve=>{
+      const overlay=document.createElement("div");
+      overlay.id="nameOverlay";
+      overlay.style.cssText="position:fixed;inset:0;background:rgba(26,20,14,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
+      overlay.innerHTML=`
+        <div style="background:#fff;border-radius:18px;padding:28px 24px;max-width:340px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,.35)">
+          <div style="font-size:20px;font-weight:900;color:var(--char);margin-bottom:6px">Who's predicting? 🦁</div>
+          <div style="font-size:13px;color:var(--soft);margin-bottom:18px">Enter your full name to join the pride. This is how you'll appear on the leaderboard.</div>
+          <input id="nameModalInput" type="text" placeholder="First and last name" autocomplete="name"
+            style="width:100%;padding:12px 14px;border:2px solid var(--amber);border-radius:10px;font-size:16px;font-weight:600;font-family:var(--sans);color:var(--char);outline:none;box-sizing:border-box;margin-bottom:14px">
+          <div id="nameModalErr" style="color:var(--rust);font-size:12px;font-weight:700;min-height:16px;margin-bottom:10px"></div>
+          <button onclick="submitNameModal('${id}')" style="width:100%;padding:13px;background:var(--rust);color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:var(--sans)">Join the Pride →</button>
+        </div>`;
+      document.body.appendChild(overlay);
+      // focus input
+      setTimeout(()=>{const inp=document.getElementById("nameModalInput");if(inp)inp.focus();},80);
+      // enter key support
+      overlay.addEventListener("keydown",e=>{if(e.key==="Enter")submitNameModal(id);});
+      window._nameModalResolve=resolve;
+    });
+    if(!ME||ME.trim().split(/\s+/).length<2) return; // cancelled or invalid
   }
   PLAYERS=(await get("players"))||[];
   if(!PLAYERS.some(n=>n.toLowerCase()===ME.toLowerCase())){PLAYERS.push(ME);await set("players",PLAYERS);}
@@ -927,6 +923,34 @@ async function savePred(id){
   if(!MYNATION)MYNATION=await get("nation:"+ME.toLowerCase());
   if(!MYNATION){const c=COUNTRIES[Math.floor(Math.random()*COUNTRIES.length)];await set("nation:"+ME.toLowerCase(),c);MYNATION=c;revealed=true;}
   MYPRED=(await get("pred:"+ME.toLowerCase()))||{};MYPRED[id]={a,b};
+  if(await set("pred:"+ME.toLowerCase(),MYPRED)){toast(revealed?("🎉 You're flying the flag for "+flag(MYNATION)+" "+MYNATION+"!"):"Pick locked ◆");renderPredict();}
+}
+
+async function submitNameModal(id){
+  const inp=document.getElementById("nameModalInput");
+  const err=document.getElementById("nameModalErr");
+  if(!inp)return;
+  const val=inp.value.trim();
+  if(!val||val.split(/\s+/).length<2){
+    if(err)err.textContent="Please enter both first and last name.";
+    inp.focus();
+    return;
+  }
+  ME=val;
+  await loadMine();
+  const overlay=document.getElementById("nameOverlay");
+  if(overlay)overlay.remove();
+  if(window._nameModalResolve){window._nameModalResolve();window._nameModalResolve=null;}
+  // now continue the save
+  PLAYERS=(await get("players"))||[];
+  if(!PLAYERS.some(n=>n.toLowerCase()===ME.toLowerCase())){PLAYERS.push(ME);await set("players",PLAYERS);}
+  let revealed=false;
+  if(!MYNATION)MYNATION=await get("nation:"+ME.toLowerCase());
+  if(!MYNATION){const c=COUNTRIES[Math.floor(Math.random()*COUNTRIES.length)];await set("nation:"+ME.toLowerCase(),c);MYNATION=c;revealed=true;}
+  MYPRED=(await get("pred:"+ME.toLowerCase()))||{};
+  const a=parseInt($("pa_"+id)?.value),b=parseInt($("pb_"+id)?.value);
+  if(isNaN(a)||isNaN(b)){toast("Enter both scores");return;}
+  MYPRED[id]={a,b};
   if(await set("pred:"+ME.toLowerCase(),MYPRED)){toast(revealed?("🎉 You're flying the flag for "+flag(MYNATION)+" "+MYNATION+"!"):"Pick locked ◆");renderPredict();}
 }
 
@@ -972,6 +996,10 @@ function renderAdmin(){
   const el=$("admin");
   const loaded=FIXTURES.some(f=>(f.stage||"").startsWith("Group "));
   let h=`
+  <div class="card" style="border-left:5px solid var(--rust)">
+    <h3>👥 Player Predictions</h3>
+    <div id="adminPreds"><div style="color:var(--soft);font-size:13px">Loading…</div></div>
+  </div>
   <div class="card" style="border-left:5px solid var(--olive)">
     <h3>⚡ Auto Scores</h3>
     <div style="font-size:13px;color:var(--char);line-height:1.6">
@@ -997,6 +1025,110 @@ function renderAdmin(){
     <div style="display:flex;gap:5px"><input type="number" min="0" id="ra_${f.id}" value="${f.ra??""}" style="width:44px;text-align:center;font-family:var(--mono);font-weight:700"><input type="number" min="0" id="rb_${f.id}" value="${f.rb??""}" style="width:44px;text-align:center;font-family:var(--mono);font-weight:700"></div>
     <div style="display:flex;gap:5px"><button class="btn rust sm" onclick="settle('${f.id}')">${f.ra!=null?'Edit':'Set'}</button><button class="btn sm" style="background:var(--rust-deep)" onclick="delFx('${f.id}')">✕</button></div></div>`;});
   h+=`</div>`;el.innerHTML=h;
+  // Load predictions async
+  loadAdminPreds();
+}
+
+async function loadAdminPreds(){
+  const el=document.getElementById("adminPreds");
+  if(!el)return;
+  el.innerHTML='<div style="color:var(--soft);font-size:13px">Loading predictions…</div>';
+
+  // Fetch ALL keys from store that start with "pred:" — catches everyone regardless of players list
+  let allPredKeys=[];
+  try{
+    const r=await fetch(`${SUPABASE_URL}/rest/v1/store?key=like.pred%3A*&select=key,value`,{
+      headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY}
+    });
+    if(!r.ok){
+      const errText=await r.text();
+      el.innerHTML=`<div style="color:var(--rust);font-size:13px">⚠ Supabase error ${r.status}: ${esc(errText.slice(0,200))}<br><button class="btn sm amber" style="margin-top:8px" onclick="loadAdminPreds()">Retry</button></div>`;
+      return;
+    }
+    const rows=await r.json();
+    if(Array.isArray(rows)) allPredKeys=rows;
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--rust);font-size:13px">⚠ Could not load predictions. Check Supabase connection.<br><button class="btn sm amber" style="margin-top:8px" onclick="loadAdminPreds()">Retry</button></div>`;
+    return;
+  }
+
+  // Also get players list for cross-reference
+  const players=(await get("players"))||[];
+
+  if(!allPredKeys.length && !players.length){
+    el.innerHTML=`<div style="color:var(--soft);font-size:13px">No predictions yet. Staff will appear here once they lock in picks.</div>
+    <button class="btn sm" style="margin-top:8px;font-size:11px" onclick="loadAdminPreds()">🔄 Refresh</button>`;
+    return;
+  }
+
+  // Build player→preds map from raw keys
+  const predMap={};
+  allPredKeys.forEach(row=>{
+    const name=row.key.replace(/^pred:/,'');
+    try{predMap[name]=JSON.parse(row.value);}catch(e){}
+  });
+
+  // Merge with players list — use display names from players list where available
+  const displayNames={};
+  players.forEach(n=>{ displayNames[n.toLowerCase()]=n; });
+  const allNames=new Set([
+    ...players.map(n=>n.toLowerCase()),
+    ...Object.keys(predMap)
+  ]);
+  const nameList=[...allNames].map(k=>displayNames[k]||k);
+
+  const settled=FIXTURES.filter(f=>f.ra!=null);
+  const upcoming=FIXTURES.filter(f=>f.ra==null);
+  const showFixed=[...settled.slice(-5),...upcoming.slice(0,3)];
+
+  let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-size:12px;color:var(--soft);font-weight:700">${nameList.length} player${nameList.length!==1?'s':''} · ${settled.length} settled · ${upcoming.length} upcoming</div>
+    <button class="btn sm" style="font-size:11px;padding:4px 10px" onclick="loadAdminPreds()">🔄 Refresh</button>
+  </div>`;
+
+  if(!nameList.length){
+    el.innerHTML=h+'<div style="color:var(--soft);font-size:13px">No predictions found.</div>';
+    return;
+  }
+
+  h+=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--sand)">
+      <th style="text-align:left;padding:8px 10px;font-weight:800;color:var(--char);white-space:nowrap">Player</th>
+      <th style="padding:8px 6px;font-weight:800;color:var(--char);white-space:nowrap">Pts</th>
+      <th style="padding:8px 6px;font-weight:800;color:var(--char);white-space:nowrap">Picks</th>`;
+  showFixed.forEach(f=>{
+    h+=`<th style="padding:8px 4px;font-weight:700;color:var(--soft);text-align:center;white-space:nowrap" title="${esc(f.a)} v ${esc(f.b)}">${flag(f.a)}v${flag(f.b)}</th>`;
+  });
+  h+=`</tr></thead><tbody>`;
+
+  nameList.forEach(name=>{
+    const key=name.toLowerCase();
+    const preds=predMap[key]||{};
+    const pickCount=Object.keys(preds).length;
+    let pts=0;
+    settled.forEach(f=>{const g=pointsFor(preds[f.id],f);if(g!=null)pts+=g;});
+    const tr=tier(pts);
+    h+=`<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:8px 10px;font-weight:700;white-space:nowrap">${tr.e} ${esc(name)}</td>
+      <td style="padding:8px 6px;text-align:center;font-weight:900;color:var(--rust)">${pts}</td>
+      <td style="padding:8px 6px;text-align:center;color:var(--soft)">${pickCount}</td>`;
+    showFixed.forEach(f=>{
+      const p=preds[f.id];
+      if(!p){h+=`<td style="padding:8px 4px;text-align:center;color:#ccc">—</td>`;return;}
+      if(f.ra!=null){
+        const g=pointsFor(p,f);
+        const col=g===3?'var(--olive-deep)':g===1?'#B8860B':'var(--rust)';
+        const bg=g===3?'#f0f4e8':g===1?'#fffaf0':'#fff5f0';
+        h+=`<td style="padding:8px 4px;text-align:center;font-weight:700;color:${col};background:${bg};white-space:nowrap">${p.a}-${p.b}</td>`;
+      } else {
+        h+=`<td style="padding:8px 4px;text-align:center;color:var(--char);white-space:nowrap">${p.a}-${p.b}</td>`;
+      }
+    });
+    h+=`</tr>`;
+  });
+  h+=`</tbody></table></div>
+  <div style="margin-top:8px;font-size:11px;color:var(--soft)">🟢 Exact score (3pts) · 🟡 Correct result (1pt) · 🔴 Wrong · — No pick · Showing last 5 settled + next 3 upcoming</div>`;
+  el.innerHTML=h;
 }
 function pv(){const a=$("na").value,b=$("nb").value;$("fpreview").innerHTML=(a||b)?`${flag(a)} <span style="font-size:13px;color:var(--soft);font-weight:700">vs</span> ${flag(b)}`:"";}
 async function loadGroups(){
@@ -1242,14 +1374,14 @@ QUICK FACTS:
 
 When someone asks about BDIH strategy, be authoritative and enthusiastic — this is your organisation's plan. When they ask about the World Cup, be equally passionate. If asked something off-topic, gently steer back to one of these two areas. Pula! 🇧🇼`;
 
-const SUGGESTIONS=["Who are the favourites to win 2026?","What is BDIH's mission and vision?","Tell me about the 5 flagship offerings","Which African teams are in the World Cup?","What is the SmartBots Lab?","How does the prediction scoring work?","What is the SEZ and why does it matter?","Tell me about the Innovation District"];
+const SUGGESTIONS=["What is BDIH's mission and vision?","Tell me about the 5 flagship offerings","What is the SmartBots Lab?","What is the SEZ and Innovation District?","Who are the favourites to win 2026?","Which African teams are in the World Cup?","What is the Botswana Innovation Fund?","Tell me about BOTSAT-1","What are BDIH's 2030 targets?","How does prediction scoring work?"];
 
 function renderChat(){
   const el=$("chat");
   el.innerHTML=`
     <div style="background:linear-gradient(90deg,var(--char2),var(--rust-deep));border-radius:14px;padding:13px 16px;margin-bottom:14px;color:#fff">
       <div style="font-weight:800;font-size:14px;margin-bottom:3px">🤖 BDIH Knowledge Assistant</div>
-      <div style="font-size:12px;opacity:.82">Ask about the 2026 World Cup <b>or</b> the BDIH 2026–2030 Strategy</div>
+      <div style="font-size:12px;opacity:.82">Ask about the 2026 World Cup <b>or</b> the BDIH 2026–2030 Strategy — answers built-in, no internet needed</div>
     </div>
     <div class="chat-suggestions">${SUGGESTIONS.map(s=>`<button class="sug" onclick="sendChat('${s.replace(/'/g,"&#39;")}')">${s}</button>`).join("")}</div>
     <div class="chat-wrap">
@@ -1263,33 +1395,131 @@ function renderChat(){
     </div>`;
 }
 
-async function sendChat(preset){
+/* ── LOCAL KNOWLEDGE BASE ── */
+const KB=[
+  // World Cup
+  {tags:["favourites","favorites","win","winner","best team","favourite"],a:"France, England, Brazil, Germany and Argentina are the strongest favourites for 2026. France have the squad depth, England are dangerous, Brazil always arrive with intent. Argentina as reigning champions can never be written off. 🏆"},
+  {tags:["african","africa","qualify","qualified","african teams"],a:"Eight African teams qualified: Morocco, Egypt, Senegal, South Africa, Algeria, Ghana, Cape Verde and Congo. South Africa are in Group A — the one closest to home for BDIH! 🌍"},
+  {tags:["host","hosting","venue","cities","where","stadium","final"],a:"The 2026 World Cup is co-hosted by USA, Canada and Mexico across 16 cities. The final is at MetLife Stadium in New Jersey, USA. First ever three-nation World Cup! 🇺🇸🇨🇦🇲🇽"},
+  {tags:["48","teams","how many","format","groups"],a:"2026 is the first 48-team World Cup. 12 groups of 4 teams each. Top 2 from each group plus the 8 best third-place teams advance to a Round of 32 knockout stage."},
+  {tags:["bosnia","bih","group b","bih group"],a:"Bosnia and Herzegovina (BIH) are in Group B alongside Canada, Qatar and Switzerland. Fun fact — BIH is also BDIH's nickname! We're cheering for both. 🇧🇦"},
+  {tags:["scoring","points","predict","prediction","exact","result"],a:"Exact score correct = 3 points 💎. Correct result only (Win/Draw/Loss) = 1 point. Wrong = 0 points. Get the exact score and you leap up the Big Five ladder fast!"},
+  {tags:["rank","ranks","big five","buffalo","elephant","hippo","leopard","lion","tier"],a:"The Big Five rank ladder: 🐃 Buffalo (0 pts) → 🐘 Elephant (5 pts) → 🦛 Hippo (12 pts) → 🐆 Leopard (21 pts) → 🦁 Lion (31 pts). Climb the pride!"},
+  {tags:["when","start","date","kick off","kickoff","tournament start"],a:"The 2026 World Cup kicks off on 11 June 2026 and runs through to 19 July 2026. The final is at MetLife Stadium, New Jersey. Mark your calendars! ⚽"},
+  {tags:["pula","meaning","setswana"],a:"'Pula' means rain or blessing in Setswana — it's used as a toast and celebration. In Botswana rain is precious, so Pula is the highest wish you can give someone. Pula! 🇧🇼"},
+  {tags:["argentina","champion","2022","qatar"],a:"Argentina won the 2022 World Cup in Qatar, beating France on penalties in one of the greatest finals ever. Lionel Messi finally lifted the trophy. 🏆🇦🇷"},
+  // BDIH Mission/Vision/Values
+  {tags:["mission","purpose","bdih mission"],a:"BDIH's mission: To orchestrate Botswana's innovation ecosystem and deliver the digital and technology outcomes that diversify the economy. Simple, focused, and enormous in scope."},
+  {tags:["vision","bdih vision"],a:"BDIH's vision: 'A world-class innovation ecosystem where local talent, global leaders and transformative ideas converge to drive sustainable economic impact.' That's the north star. 🌟"},
+  {tags:["values","bdih values"],a:"BDIH's five values: Excellence, Innovation, Integrity, Inclusivity and Collaboration. Every programme, every partnership, every hire should reflect these."},
+  {tags:["about bdih","what is bdih","bdih","who is bdih"],a:"BDIH — Botswana Digital and Innovation Hub — is Botswana's primary innovation and digital economy institution, under the Ministry of Communication and Innovation. Operating since 2010, with subsidiaries BIHP (property) and BIHI (investments), plus the Botswana Innovation Fund."},
+  // Economic Context
+  {tags:["p12","12 billion","mineral","diamond","economic","fiscal","challenge"],a:"Botswana lost ~P12 billion in annual mineral revenue due to diamond repricing. GDP contracted 2.8% in 2024. Mining fell 24%, diamond trading 34%. This structural gap — not a cycle — is exactly why BDIH's role as the digital economy engine matters so much right now."},
+  {tags:["vision 2036","ndp","betp","national plan"],a:"Vision 2036 targets a knowledge-based economy. NDP 12 and BETP set goals of P514B investment, 512,000 jobs, and 20% ICT contribution to GDP. BDIH is the named delivery vehicle for getting Botswana there."},
+  // Pillars
+  {tags:["pillars","strategic priorities","four pillars","pillar"],a:"BDIH has 4 pillars + 1 foundational: (1) Digital Economy Leadership, (2) Innovation Ecosystem, (3) Innovation & Tech Investments, (4) Digital Skills & Talent. The foundational pillar is the High-Yield Tech Industry SEZ / Science and Technology Park / Innovation District — the load-bearing driver to self-sustenance by 2030."},
+  {tags:["pillar 1","digital economy","fintech","e-commerce","e-government"],a:"Pillar 1 — Digital Economy Leadership: Anchoring Botswana's shift from mineral dependence to a digitally enabled economy through fintech, e-commerce, digital trade and e-government platforms."},
+  {tags:["pillar 2","innovation ecosystem","incubation","acceleration","startups"],a:"Pillar 2 — Innovation Ecosystem: Building a self-sustaining pipeline connecting startups, SMEs and corporates through incubation, acceleration and technology commercialisation. Ideas into globally competitive ventures."},
+  {tags:["pillar 3","investments","ai","cloud","infrastructure"],a:"Pillar 3 — Innovation & Tech Investments: Catalysing innovation through strategic technology investments in AI, cloud, fintech, emerging tech and public-private ventures that accelerate Botswana's digital infrastructure."},
+  {tags:["pillar 4","skills","talent","coding","stem","reskilling"],a:"Pillar 4 — Digital Skills & Talent: Building a future-ready workforce with AI, cloud and software skills through coding academies, STEM partnerships and industry-led reskilling programmes."},
+  // SEZ / Innovation District
+  {tags:["sez","science technology park","stp","innovation district","foundational pillar","anchor tenant"],a:"The SEZ / Innovation District is BDIH's foundational pillar — the load-bearing foundation everything else rests on. It activates the Science and Technology Park as an SEZ, attracts international high-tech anchor tenants, and connects them to local startups for tech transfer and export. It's BDIH's path to financial self-sustenance by 2030."},
+  // Flagship Offerings
+  {tags:["flagship","offerings","five flagship","smartbots","ntto","ndf","bitcc"],a:"BDIH's 5 flagship offerings: (1) SmartBots Lab — AI/FinTech/Blockchain sandbox. (2) NTTO — National Tech Transfer Office, moves IP to market. (3) National Digital Factory — PPP engine for digital platforms. (4) Innovation District — SEZ anchor tenant park. (5) BITCC — last-mile venture support to revenue. 🚀"},
+  {tags:["smartbots","smartbots lab"],a:"SmartBots Lab is the national sandbox for AI, Open Data, FinTech, Blockchain and Cyber. It's the platform engine connecting BDIH's digital offerings, anchor tenants and innovators. Stage 2 of the 8-stage value chain."},
+  {tags:["ntto","tech transfer","ip","licensing","spin"],a:"The National Tech Transfer Office (NTTO) moves research and IP from BITRI, UB and BIUST into commercial use — scouting, licensing, spin-out creation and matching innovators with STP anchor tenants. Stage 3 of the value chain."},
+  {tags:["national digital factory","ndf","ppp","digital platforms"],a:"The National Digital Factory (NDF) is a PPP delivery engine for national digital platforms, Data Exchange and cyber infrastructure. It enables both the private sector and Government to digitalise and transact at scale. Stage 4."},
+  {tags:["bitcc","commercialisation","last mile","investor readiness","go to market"],a:"BITCC — Botswana's Innovation & Tech Commercialisation Centre — provides last-mile venture support from validated innovation to revenue. Market validation, investor readiness, and go-to-market via anchor supply chains. Stage 8."},
+  // Value Chain
+  {tags:["value chain","8 stage","stages","pipeline"],a:"BDIH's 8-stage innovation value chain: (1) Industry Futures & Foresight → (2) Ideation & Incubation → (3) IP & Tech Transfer → (4) Acceleration & Scale → (5) Anchor Tenant Attraction (SEZ) → (6) Cluster & Ecosystem → (7) Internationalisation & Export → (8) Impact & Renewal."},
+  // Verticals
+  {tags:["verticals","industries","sectors","clusters","smart mining","agritech","biotech","space"],a:"BDIH's 7 Industry Innovation Verticals thread across all 8 stages: Digital Economy, Smart Mining, Energy & Cleantech, AgriTech, BioTech & IKS, Space Technology, and AI-First Skills & Talent."},
+  // Governance
+  {tags:["governance","board","exco","committee","meetings","cadence"],a:"BDIH governance runs fortnightly Exco core meetings, monthly management committees (POU, Governance & Risk, People, Funds, Technical/Partnerships), and quarterly Board sub-committees (CSTC, RHRC, FIC, ARC) plus full Board meetings."},
+  // Partners
+  {tags:["partners","bitri","ub","biust","ceda","mci","partners ecosystem"],a:"BDIH's key ecosystem partners: BITRI, NARDI, University of Botswana (UB), BIUST, CEDA, LEA, NDB, BITC and MCI. Fragmentation across these institutions is exactly what BDIH's coordination mandate is designed to solve."},
+  {tags:["governance","board","exco","committee","meetings","cadence"],a:"BDIH governance runs fortnightly Exco core meetings, monthly management committees (POU, Governance & Risk, People, Funds, Technical/Partnerships), and quarterly Board sub-committees (CSTC, RHRC, FIC, ARC) plus full Board meetings."},
+  // Partners
+  {tags:["partners","bitri","ub","biust","ceda","mci","partners ecosystem"],a:"BDIH's key ecosystem partners: BITRI, NARDI, University of Botswana (UB), BIUST, CEDA, LEA, NDB, BITC and MCI. Fragmentation across these institutions is exactly what BDIH's coordination mandate is designed to solve."},
+  // Contact
+  {tags:["contact","website","phone","email","reach","bih"],a:"BDIH contact: +267 391 3328 | info@bih.co.bw | www.bih.co.bw 🌐"},
+
+  // ── LEADERSHIP & MANAGEMENT ──
+  {tags:["ceo","chief executive","managing director","leadership","who runs","head of bdih","executive"],a:"BDIH's CEO leads the executive team and reports to the Board of Directors, which is appointed by the Ministry of Communication and Innovation (MCI). The CEO drives the 2026–2030 strategy and chairs the Exco. For the current CEO's name, check www.bih.co.bw — leadership details are updated on the website. 👔"},
+  {tags:["management","management team","exco members","executive team","directors","leadership team"],a:"BDIH's executive management team covers Strategy & Execution, Finance & Procurement, HR, Marketing & Partnerships, ICT Services, Facilities Management, Audit & Risk, and Legal & Board. The team presents monthly to Exco and quarterly to the Board. Full team profiles are at www.bih.co.bw."},
+  {tags:["ministry","mci","minister","government","shareholder","owner","parent"],a:"BDIH is a parastatal under the Ministry of Communication and Innovation (MCI). The Ministry appoints the Board of Directors and is the primary shareholder. BDIH operates with a mandate from Cabinet to deliver Botswana's digital economy and innovation outcomes."},
+  {tags:["board","board of directors","board members","board composition"],a:"BDIH's Board of Directors is appointed by MCI and provides strategic oversight. Sub-committees include: CSTC (Collaborations, Scientific & Technical), RHRC (Remuneration & HR), FIC (Financial & Investment), and ARC (Audit & Risk). Board meets quarterly."},
+
+  // ── SUBSIDIARIES & FUNDS ──
+  {tags:["bihp","bih property","property","real estate","icon building","land"],a:"BIH Property (Pty) Ltd (BIHP) is a BDIH subsidiary managing the Science and Technology Park (STP) land, Icon Building leasing, and real estate services. It's the commercial property arm enabling the Innovation District vision."},
+  {tags:["bihi","bih investments","investments subsidiary","commercial","ppp projects","spv"],a:"BIH Investments (Pty) Ltd (BIHI) is a BDIH subsidiary acting as an SPV for commercial-oriented projects and facilitating Public-Private Partnerships. It's the commercial deal-making arm."},
+  {tags:["bif","botswana innovation fund","fund","grants","seed","seed funding","innovation fund"],a:"The Botswana Innovation Fund (BIF) is a statutory instrument providing seed funding in the form of grants to high-impact, high-growth innovations. It's BDIH's primary funding tool for early-stage innovators and startups entering the ecosystem."},
+
+  // ── LOCATION & INFRASTRUCTURE ──
+  {tags:["location","where","gaborone","address","campus","icon building","park","stp"],a:"BDIH is headquartered in Gaborone, Botswana. Its campus includes the Icon Building — a landmark innovation facility — and the Science and Technology Park (STP) in Gaborone. The STP is the physical foundation for the Innovation District and SEZ. Address: Plot 50370, Fairgrounds Office Park, Gaborone."},
+  {tags:["icon building","icon","headquarters","hq","bdih building"],a:"The Icon Building is BDIH's flagship facility in Gaborone — a modern innovation hub hosting incubation programmes, offices, and collaborative workspaces. It's a symbol of Botswana's digital ambition and sits within the Science and Technology Park."},
+
+  // ── HISTORY & CONTEXT ──
+  {tags:["history","founded","when","established","how old","years","since"],a:"BDIH has been operating since 2010, making it over 15 years old. It began as a hub to catalyse Botswana's technology and innovation sector, and has evolved significantly — now carrying the national mandate to diversify the economy away from mineral dependence through the 2026–2030 strategy."},
+  {tags:["staff","employees","people","team size","workforce","engagement","35%"],a:"BDIH employs a multidisciplinary team spanning technology, business, finance, legal and operations. Current strategic challenges noted in the 2026–2030 strategy include a 35% staff engagement level and high subvention dependency — both targeted for improvement under the new strategy."},
+  {tags:["subvention","funding","government funding","budget","financial","self sustenance","self-sustaining"],a:"BDIH currently depends heavily on government subvention (grants from MCI). The 2026–2030 strategy's primary financial goal is self-sustenance by 2030 — generating its own commercial revenue through SEZ anchor tenant fees, BIF returns, Innovation District leasing and NDF contracts, reducing dependence on the state."},
+
+  // ── PROGRAMMES & IMPACT ──
+  {tags:["incubation","incubator","incubates","startups supported","programme","programs"],a:"BDIH runs incubation and pre-seed programmes for Botswana's startups, providing mentorship, workspace, prototyping support and access to the Botswana Innovation Fund. The SmartBots Lab serves as the platform engine for these programmes, running hackathons and challenges to identify the next generation of innovators."},
+  {tags:["hackathon","challenge","competition","innovation challenge","coding"],a:"BDIH runs national innovation challenges and hackathons as part of the Ideation & Incubation stage of its value chain. These are entry points for innovators, with winning solutions potentially feeding into the incubation pipeline and accessing BIF seed funding."},
+  {tags:["impact","jobs","gdp","results","outcomes","achievements","what has bdih done"],a:"BDIH's impact targets under Vision 2036 and BETP: P514 billion in investment attracted, 512,000 jobs created, and 20% ICT contribution to GDP. The 2026–2030 strategy tracks impact at Stage 8 (Impact & Renewal) — measuring jobs, GDP contribution, FDI and portfolio performance against these national targets."},
+  {tags:["fdi","foreign investment","attract investment","international","global"],a:"Attracting Foreign Direct Investment (FDI) is central to BDIH's SEZ strategy. The Innovation District's anchor tenant model targets international high-tech companies — offering SEZ incentives, plug-and-play facilities, regulatory sandboxes and investor concierge services to land global tech leaders in Botswana."},
+  {tags:["export","internationalisation","afcfta","africa","regional","cross border"],a:"Internationalisation & Export is Stage 7 of BDIH's value chain. It leverages AfCFTA (African Continental Free Trade Area) trade factories, cross-border partnerships and international channel networks to take Botswana's tech innovations to regional and global markets."},
+
+  // ── TECHNOLOGIES ──
+  {tags:["botsat","satellite","space","space technology","botsat-1"],a:"BOTSAT-1 is Botswana's first satellite programme — one of BDIH's frontier technology areas. Under the Space Technology vertical, BDIH supports BOTSAT-1 expansion, earth observation analytics and AfSA partnerships for agricultural and environmental monitoring. Botswana's eyes in the sky! 🛰️"},
+  {tags:["ai","artificial intelligence","machine learning","nlp","predictive"],a:"AI & Machine Learning is a core BDIH technology pillar — covering predictive analytics, NLP and computer vision for mining, agriculture and government services. SmartBots Lab is the sandbox where AI solutions are developed, tested and commercialised."},
+  {tags:["fintech","digital payments","open banking","wallet","payment switch"],a:"FinTech & Digital Payments is a key sector for BDIH — including national digital ID, e-wallets, a retail payment switch, Open Banking APIs and the regulatory sandbox. Botswana's financial inclusion and digital transaction goals run through this vertical."},
+  {tags:["cybersecurity","cyber","data protection","soc","security"],a:"Cybersecurity & Digital Trust covers SOC operations, Data Protection Act compliance, digital certificates and identity verification. BDIH operates within Botswana's data protection regulatory framework and is building national cyber resilience capacity through the SmartBots Lab and NDF."},
+  {tags:["regulatory sandbox","sandbox","regulation","fintech regulation","blockchain regulation"],a:"BDIH operates a Regulatory Sandbox — a controlled environment for testing FinTech, AI and Blockchain innovations before full market deployment. This reduces regulatory risk for innovators and positions Botswana as a progressive, innovation-friendly jurisdiction."},
+  {tags:["quantum","quantum computing","quantum readiness"],a:"Quantum Computing Readiness is one of BDIH's frontier technology bets. BDIH is partnering with the SA Quantum Initiative on quantum cryptography and financial modelling applications — positioning Botswana to benefit as quantum technologies mature globally."},
+
+  // ── STRATEGY EXECUTION ──
+  {tags:["2030","by 2030","targets","goals","strategy goals","what will bdih achieve"],a:"By 2030, BDIH targets financial self-sustenance, P514B in investment facilitated, 512,000 jobs, 20% ICT GDP contribution, and a fully operational Innovation District with international anchor tenants. The foundational SEZ/STP pillar is the key to unlocking commercial revenue independence."},
+  {tags:["maturity","maturity model","capability","l1","l2","l3","capability maturity"],a:"BDIH uses a 5-level Capability Maturity Model to track progress: L1 Initial (today, 2026) → L2 → L3 → L4 → L5. Each pillar and programme is assessed against this model to identify gaps and drive deliberate capability building toward the 2030 targets."},
+  {tags:["run the hub","grow ecosystem","two tracks","tracks"],a:"BDIH's strategy operates on two internal tracks: 'Run the Hub' (operational excellence, internal digital transformation, governance) and 'Grow the Ecosystem' (external programmes, SEZ, flagships, partnerships). Both tracks are necessary — you can't grow the ecosystem on a broken foundation."},
+  {tags:["betp","botswana economic transformation","economic plan","national strategy","ndp 12"],a:"The Botswana Economic Transformation and Prosperity (BETP) strategy sets national targets BDIH must contribute to — P514B investment, 512,000 jobs, 20% ICT GDP contribution. Alongside Vision 2036 and NDP 12, these form the policy framework within which BDIH's 2026–2030 strategy was designed."},
+  {tags:["pefa","dcec","transparency","accountability","public finance"],a:"BDIH's strategy was informed by PEFA (Public Expenditure and Financial Accountability) assessments and DCEC (Directorate on Corruption and Economic Crime) reports — reflecting a commitment to transparency, accountability and good governance in managing public innovation investment."},
+];
+
+function localAnswer(q){
+  const lower=q.toLowerCase();
+  // score each KB entry by how many tags match
+  let best=null,bestScore=0;
+  for(const entry of KB){
+    let score=0;
+    for(const tag of entry.tags){
+      if(lower.includes(tag)) score++;
+    }
+    if(score>bestScore){bestScore=score;best=entry;}
+  }
+  if(bestScore>0) return best.a;
+  // fallback
+  return "Good question! I'm a local knowledge assistant — I know the BDIH 2026–2030 Strategy and the 2026 FIFA World Cup inside out. Try asking about the pillars, flagship offerings, the SEZ, World Cup teams, scoring rules, or the Big Five ranks. Pula! 🇧🇼";
+}
+
+function sendChat(preset){
   const input=$("chatInput");
   const text=preset||(input?input.value.trim():"");
   if(!text)return;
   if(input)input.value="";
   const msgs=$("chatMsgs");
   msgs.innerHTML+=`<div class="msg user">${esc(text)}</div>`;
+  // simulate a tiny thinking pause
   const typingId="t"+Date.now();
   msgs.innerHTML+=`<div class="msg bot typing" id="${typingId}"><span></span><span></span><span></span></div>`;
   msgs.scrollTop=msgs.scrollHeight;
-  chatHistory.push({role:"user",content:text});
-  try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,system:CHAT_SYSTEM,messages:chatHistory})
-    });
-    const data=await res.json();
-    const reply=data.content?.[0]?.text||"Sorry, I couldn't reach the AI right now. Try again in a moment.";
-    chatHistory.push({role:"assistant",content:reply});
+  setTimeout(()=>{
+    const reply=localAnswer(text);
     const t=document.getElementById(typingId);
     if(t)t.outerHTML=`<div class="msg bot"><div class="bot-name">BDIH AI</div>${reply.replace(/\n/g,"<br>")}</div>`;
-  }catch(e){
-    const t=document.getElementById(typingId);
-    if(t)t.outerHTML=`<div class="msg bot"><div class="bot-name">BDIH AI</div>Connection error — please try again.</div>`;
-  }
-  msgs.scrollTop=msgs.scrollHeight;
+    msgs.scrollTop=msgs.scrollHeight;
+  },600);
 }
 
 
